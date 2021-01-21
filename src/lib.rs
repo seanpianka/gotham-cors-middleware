@@ -6,8 +6,8 @@
 #[macro_use]
 extern crate gotham_derive;
 
-use futures::Future;
-use gotham::handler::HandlerFuture;
+use futures::{FutureExt, TryFutureExt, future};
+use gotham::handler::{HandlerFuture};
 use gotham::middleware::Middleware;
 use gotham::state::{FromState, State};
 use hyper::header::{
@@ -17,6 +17,7 @@ use hyper::header::{
 };
 use hyper::Method;
 use std::option::Option;
+use std::pin::Pin;
 
 /// Struct to perform the necessary CORS
 /// functionality needed. Allows some
@@ -29,10 +30,10 @@ use std::option::Option;
 /// extern crate gotham_cors_middleware;
 ///
 /// use gotham::pipeline::new_pipeline;
-/// use gotham_cors_middleware::CORSMiddleware;
 /// use gotham::pipeline::single::single_pipeline;
 /// use gotham::router::builder::*;
 /// use gotham::router::Router;
+/// use gotham_cors_middleware::CORSMiddleware;
 ///
 /// pub fn router() -> Router {
 ///     let (chain, pipeline) = single_pipeline(
@@ -132,12 +133,13 @@ impl CORSMiddleware {
 }
 
 impl Middleware for CORSMiddleware {
-    fn call<Chain>(self, state: State, chain: Chain) -> Box<HandlerFuture>
+    fn call<Chain>(self, state: State, chain: Chain) -> Pin<Box<HandlerFuture>>
     where
-        Chain: FnOnce(State) -> Box<HandlerFuture> + Send + 'static,
+        Chain: FnOnce(State) -> Pin<Box<HandlerFuture>> + Send + 'static,
     {
         let settings = self.clone();
-        let f = chain(state).map(|(state, mut response)| {
+        let result = chain(state);
+        let f = result.and_then(move |(state, mut response)| {
             let origin: String;
             if settings.origin.is_none() {
                 let origin_raw = HeaderMap::borrow_from(&state).get(ORIGIN).clone();
@@ -188,10 +190,10 @@ impl Middleware for CORSMiddleware {
                 .headers_mut()
                 .insert(ACCESS_CONTROL_MAX_AGE, HeaderValue::from(settings.max_age));
 
-            (state, response)
+            future::ok((state, response))
         });
 
-        Box::new(f)
+        f.boxed()
     }
 }
 
@@ -212,12 +214,12 @@ mod tests {
     use hyper::StatusCode;
 
     // Since we cannot construct 'State' ourselves, we need to test via an 'actual' app
-    fn handler(state: State) -> Box<HandlerFuture> {
+    fn handler(state: State) -> Pin<Box<HandlerFuture>> {
         let body = "Hello World".to_string();
 
         let response = create_response(&state, StatusCode::OK, mime::TEXT_PLAIN, body.into_bytes());
 
-        Box::new(future::ok((state, response)))
+        future::ok((state, response)).boxed()
     }
 
     fn default_router() -> Router {

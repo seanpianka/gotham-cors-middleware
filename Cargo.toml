@@ -9,10 +9,10 @@ license = "MIT OR Apache-2.0"
 edition = "2018"
 
 [dependencies]
-futures = "0.1"
-gotham = "0.4"
-gotham_derive = "0.4"
-hyper = "0.12"
+futures = "0.3"
+gotham = { git = "https://github.com/gotham-rs/gotham.git", rev = "9f10935" }
+gotham_derive = { git = "https://github.com/gotham-rs/gotham.git", rev = "9f10935" }
+hyper = "0.14"
 
 [dev-dependencies]
 mime = "0.3"
